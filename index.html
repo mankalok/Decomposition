@@ -2,20 +2,20 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>3D 空間切割探究 V25 - 視覺層次修正版</title>
+    <title>3D 空間切割探究</title>
     <style>
         body { font-family: '微軟正黑體', sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; padding: 20px; }
         
         #main-container { position: relative; width: 850px; height: 550px; }
 
         #scene { 
-            width: 100%; height: 100%; perspective: 800px; /* 保持較強透視增加景深 */
+            width: 100%; height: 100%; perspective: 800px; 
             background: #fff; border-radius: 15px; border: 2px solid #ddd;
             display: flex; justify-content: center; align-items: center; position: relative;
-            cursor: move; touch-action: none; overflow: hidden;
+            cursor: move; touch-action: none; overflow: hidden; /* touch-action: none 好緊要，防止 iPad 劃動時成頁紙跟住郁 */
         }
 
-        #object-container { width: 0; height: 0; position: relative; transform-style: preserve-3d; transform: rotateX(-15deg) rotateY(35deg) scale(1.2); } /* 放大並微調角度 */
+        #object-container { width: 0; height: 0; position: relative; transform-style: preserve-3d; transform: rotateX(-15deg) rotateY(35deg) scale(1.2); }
         .cube { position: absolute; transform-style: preserve-3d; transition: all 0.6s ease; }
         .face { position: absolute; border: 1px solid rgba(255,255,255,0.7); box-sizing: border-box; }
         .front { background: #3498db; opacity: 0.85; }
@@ -27,7 +27,7 @@
         .label { 
             position: absolute; font-weight: bold; font-size: 14px; 
             background: rgba(255,255,255,0.95); padding: 2px 6px; border: 1px solid #333;
-            border-radius: 4px; z-index: 1000; white-space: nowrap; transform: translateZ(60px); /* 默認在最前層 */
+            border-radius: 4px; z-index: 1000; white-space: nowrap; transform: translateZ(60px);
         }
         .dim-l { color: #d35400; border-color: #d35400; } 
         .dim-w { color: #27ae60; border-color: #27ae60; background: #f0fff0; } 
@@ -41,7 +41,6 @@
         button:hover { background: #34495e; transform: scale(1.05); }
         button.cut-btn { background: #e67e22; }
 
-        /* 底部輸入區域依然保留 */
         #input-area { 
             margin-top: 20px; padding: 20px; background: white; border-radius: 12px; 
             width: 850px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-top: 6px solid #2c3e50;
@@ -52,7 +51,7 @@
 </head>
 <body>
 
-    <h2 style="color:#2c3e50;">📐 3D 空間切割探究 V25</h2>
+    <h2 style="color:#2c3e50;">📐 3D 空間切割探究 V26 (iPad 旋轉優化)</h2>
 
     <div id="main-container">
         <div id="scene">
@@ -80,17 +79,46 @@
     const container = document.getElementById('object-container');
     const mathInputs = document.getElementById('math-inputs');
     const scene = document.getElementById('scene');
-    let currentShape = '', rotateX = -15, rotateY = 35; /* 角度微調增加側視感 */
+    let currentShape = '', rotateX = -15, rotateY = 35;
 
-    scene.onmousedown = (e) => { scene.isDragging = true; scene.lastX = e.clientX; scene.lastY = e.clientY; };
-    window.onmouseup = () => scene.isDragging = false;
-    window.onmousemove = (e) => {
+    // --- 滑鼠與觸控通用旋轉逻辑 ---
+    function startMove(x, y) {
+        scene.isDragging = true;
+        scene.lastX = x;
+        scene.lastY = y;
+    }
+
+    function doMove(x, y) {
         if (!scene.isDragging) return;
-        rotateY += (e.clientX - scene.lastX) * 0.5;
-        rotateX -= (e.clientY - scene.lastY) * 0.5;
-        container.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.2)`; /* 整體放大 */
-        scene.lastX = e.clientX; scene.lastY = e.clientY;
+        rotateY += (x - scene.lastX) * 0.5;
+        rotateX -= (y - scene.lastY) * 0.5;
+        container.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.2)`;
+        scene.lastX = x;
+        scene.lastY = y;
+    }
+
+    function endMove() {
+        scene.isDragging = false;
+    }
+
+    // 滑鼠事件
+    scene.onmousedown = (e) => startMove(e.clientX, e.clientY);
+    window.onmousemove = (e) => doMove(e.clientX, e.clientY);
+    window.onmouseup = () => endMove();
+
+    // iPad / 手機觸控事件
+    scene.ontouchstart = (e) => {
+        const t = e.touches[0];
+        startMove(t.clientX, t.clientY);
     };
+    scene.ontouchmove = (e) => {
+        const t = e.touches[0];
+        doMove(t.clientX, t.clientY);
+        e.preventDefault(); // 防止 iPad 劃動時滾動頁面
+    };
+    scene.ontouchend = () => endMove();
+
+    // --- 圖形生成邏輯 (保留之前 V25 修正) ---
 
     function createCube(x, y, z, w, h, d, labels, hideValues = false) {
         const cube = document.createElement('div');
@@ -130,28 +158,22 @@
             container.appendChild(createCube(-60,-50,0, 60,150,60, [
                 {t:'高:15', p:'left:-75px; top:35%', c:'dim-h'}, 
                 {t:'長:6', p:'top:-45px; left:0px', c:'dim-l'}, 
-                // L型闊：保持褪入深度 (translateZ=0)，位於柱體頂部後角落
                 {t:'闊:6', p:'right:-55px; top:-40px; transform:translateZ(0px);', c:'dim-w'},
-                // L型總長：移返落底部，貼住地面最前層 (translateZ=60)
                 {t:'長:16 (總)', p:'bottom:-60px; left:30px; transform:translateZ(60px);', c:'dim-l'} 
             ]));
             container.appendChild(createCube(0,40,0, 100,60,60, [
                 {t:'高:6', p:'right:-75px; top:15px', c:'dim-h'}
             ]));
         } else if(type === '凹') {
-            // 左立柱
             container.appendChild(createCube(-100,-50,0, 50,150,60, [
                 {t:'高:15', p:'left:-75px; top:35%', c:'dim-h'}, 
                 {t:'長:5', p:'top:-45px; left:0px', c:'dim-l'}
             ]));
-            // 中間底座 (已移除底部高:5)
             container.appendChild(createCube(-50,50,0, 100,50,60, [
                 {t:'長:20 (總)', p:'bottom:-65px; left:25px', c:'dim-l'}, 
-                // 凹形闊：褪入深度 (translateZ=0)，貼住最後嗰層邊緣 (right 改為 0，令佢移去角落)
                 {t:'闊:6', p:'top:-30px; right:0px; transform:translateZ(0px);', c:'dim-w'}, 
                 {t:'中間高:10', p:'top:-55px; left:10px', c:'dim-gap'}
             ]));
-            // 右立柱
             container.appendChild(createCube(50,-50,0, 50,150,60, [
                 {t:'高:15', p:'right:-75px; top:35%', c:'dim-h'}, 
                 {t:'長:5', p:'top:-45px; right:0px', c:'dim-l'}
@@ -188,13 +210,11 @@
                 container.appendChild(createCube(120,-50,0, 50,150,60, [{t:'(C) 長:5',p:'top:-45px',c:'dim-l'},{t:'高:15',p:'right:-75px',c:'dim-h'},{t:'闊:6',p:'bottom:-50px',c:'dim-w'}], hide));
                 setupInputs(3);
             } else {
-                // 水平切割：闊度標籤也需要保持褪入位置
                 container.appendChild(createCube(-100,-100,0, 50,100,60, [{t:'(A) 長:5',p:'top:-45px',c:'dim-l'},{t:'高:10',p:'left:-75px',c:'dim-h'},{t:'闊:6',p:'bottom:-45px',c:'dim-w'}], hide));
                 container.appendChild(createCube(50,-100,0, 50,100,60, [{t:'(B) 長:5',p:'top:-45px',c:'dim-l'},{t:'高:10',p:'right:-75px',c:'dim-h'},{t:'闊:6',p:'bottom:-45px',c:'dim-w'}], hide));
                 container.appendChild(createCube(-100,50,0, 200,50,60, [
                     {t:'(C) 長:20',p:'bottom:-50px',c:'dim-l'},
                     {t:'高:5',p:'right:-75px',c:'dim-h'},
-                    // 保持褪入位置
                     {t:'闊:6',p:'top:-30px; right:0px; transform:translateZ(0px);',c:'dim-w'} 
                 ], hide));
                 setupInputs(3);
