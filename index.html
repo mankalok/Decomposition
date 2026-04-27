@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 空間切割探究 V25 - 視覺層次修正版</title>
+    <style>
+        body { font-family: '微軟正黑體', sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        
+        #main-container { position: relative; width: 850px; height: 550px; }
+
+        #scene { 
+            width: 100%; height: 100%; perspective: 800px; /* 保持較強透視增加景深 */
+            background: #fff; border-radius: 15px; border: 2px solid #ddd;
+            display: flex; justify-content: center; align-items: center; position: relative;
+            cursor: move; touch-action: none; overflow: hidden;
+        }
+
+        #object-container { width: 0; height: 0; position: relative; transform-style: preserve-3d; transform: rotateX(-15deg) rotateY(35deg) scale(1.2); } /* 放大並微調角度 */
+        .cube { position: absolute; transform-style: preserve-3d; transition: all 0.6s ease; }
+        .face { position: absolute; border: 1px solid rgba(255,255,255,0.7); box-sizing: border-box; }
+        .front { background: #3498db; opacity: 0.85; }
+        .top { background: #5dade2; opacity: 0.85; }
+        .right { background: #2c3e50; opacity: 0.85; }
+        .left { background: #34495e; opacity: 0.85; }
+        .bottom { background: #1b2631; }
+
+        .label { 
+            position: absolute; font-weight: bold; font-size: 14px; 
+            background: rgba(255,255,255,0.95); padding: 2px 6px; border: 1px solid #333;
+            border-radius: 4px; z-index: 1000; white-space: nowrap; transform: translateZ(60px); /* 默認在最前層 */
+        }
+        .dim-l { color: #d35400; border-color: #d35400; } 
+        .dim-w { color: #27ae60; border-color: #27ae60; background: #f0fff0; } 
+        .dim-h { color: #2980b9; border-color: #2980b9; } 
+        .dim-gap { color: #8e44ad; border-color: #8e44ad; background: #fdf2ff; }
+        
+        .revealed { background: #f1c40f !important; border-color: #000 !important; color: #000 !important; }
+
+        .controls { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        button { padding: 10px 18px; cursor: pointer; border-radius: 8px; border: none; background: #2c3e50; color: white; font-weight: bold; transition: 0.2s; }
+        button:hover { background: #34495e; transform: scale(1.05); }
+        button.cut-btn { background: #e67e22; }
+
+        /* 底部輸入區域依然保留 */
+        #input-area { 
+            margin-top: 20px; padding: 20px; background: white; border-radius: 12px; 
+            width: 850px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-top: 6px solid #2c3e50;
+        }
+        .calc-row { margin-bottom: 12px; font-size: 16px; display: flex; align-items: center; gap: 8px; background: #f9f9f9; padding: 10px; border-radius: 8px; }
+        input { width: 55px; padding: 5px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <h2 style="color:#2c3e50;">📐 3D 空間切割探究 V25</h2>
+
+    <div id="main-container">
+        <div id="scene">
+            <div id="object-container"></div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button onclick="loadShape('L')">📐 載入 L 形</button>
+        <button onclick="loadShape('凹')">⛩️ 載入 凹形</button>
+        <button class="cut-btn" onclick="applyCut('V')">✂️ 垂直切割</button>
+        <button class="cut-btn" onclick="applyCut('H')">✂️ 水平切割</button>
+        <button style="background:#95a5a6" onclick="reset()">🔄 重置</button>
+    </div>
+
+    <div id="input-area">
+        <div id="math-inputs">請選擇圖形進行探究。</div>
+        <div style="margin-top:15px; border-top:1px dashed #ccc; padding-top:10px; display: flex; align-items: center;">
+            <button style="background:#27ae60;" onclick="checkAnswer()">✅ 檢查答案</button>
+            <span id="result-msg" style="margin-left:15px; font-weight:bold; font-size:18px;"></span>
+        </div>
+    </div>
+
+<script>
+    const container = document.getElementById('object-container');
+    const mathInputs = document.getElementById('math-inputs');
+    const scene = document.getElementById('scene');
+    let currentShape = '', rotateX = -15, rotateY = 35; /* 角度微調增加側視感 */
+
+    scene.onmousedown = (e) => { scene.isDragging = true; scene.lastX = e.clientX; scene.lastY = e.clientY; };
+    window.onmouseup = () => scene.isDragging = false;
+    window.onmousemove = (e) => {
+        if (!scene.isDragging) return;
+        rotateY += (e.clientX - scene.lastX) * 0.5;
+        rotateX -= (e.clientY - scene.lastY) * 0.5;
+        container.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.2)`; /* 整體放大 */
+        scene.lastX = e.clientX; scene.lastY = e.clientY;
+    };
+
+    function createCube(x, y, z, w, h, d, labels, hideValues = false) {
+        const cube = document.createElement('div');
+        cube.className = 'cube';
+        cube.style.cssText = `width:${w}px; height:${h}px; transform: translate3d(${x}px, ${y}px, ${z}px);`;
+        
+        const faces = ['front', 'top', 'right', 'left', 'bottom'];
+        const faceStyles = [
+            `width:${w}px; height:${h}px; transform: translateZ(${d/2}px)`,
+            `width:${w}px; height:${d}px; transform: rotateX(90deg) translateZ(${d/2}px)`,
+            `width:${d}px; height:${h}px; transform: rotateY(90deg) translateZ(${w - d/2}px)`,
+            `width:${d}px; height:${h}px; transform: rotateY(-90deg) translateZ(${d/2}px)`,
+            `width:${w}px; height:${d}px; transform: rotateX(-90deg) translateZ(${h - d/2}px)`
+        ];
+        
+        faces.forEach((f, i) => {
+            let div = document.createElement('div');
+            div.className = `face ${f}`;
+            div.style.cssText = faceStyles[i];
+            cube.appendChild(div);
+        });
+
+        labels.forEach(l => {
+            let span = document.createElement('div');
+            span.className = `label ${l.c}`;
+            span.innerText = hideValues ? l.t.split(':')[0] + ': ?' : l.t;
+            if(hideValues) span.dataset.fullValue = l.t;
+            span.style.cssText = l.p;
+            cube.appendChild(span);
+        });
+        return cube;
+    }
+
+    function renderBaseShape(type) {
+        container.innerHTML = '';
+        if(type === 'L') {
+            container.appendChild(createCube(-60,-50,0, 60,150,60, [
+                {t:'高:15', p:'left:-75px; top:35%', c:'dim-h'}, 
+                {t:'長:6', p:'top:-45px; left:0px', c:'dim-l'}, 
+                // L型闊：保持褪入深度 (translateZ=0)，位於柱體頂部後角落
+                {t:'闊:6', p:'right:-55px; top:-40px; transform:translateZ(0px);', c:'dim-w'},
+                // L型總長：移返落底部，貼住地面最前層 (translateZ=60)
+                {t:'長:16 (總)', p:'bottom:-60px; left:30px; transform:translateZ(60px);', c:'dim-l'} 
+            ]));
+            container.appendChild(createCube(0,40,0, 100,60,60, [
+                {t:'高:6', p:'right:-75px; top:15px', c:'dim-h'}
+            ]));
+        } else if(type === '凹') {
+            // 左立柱
+            container.appendChild(createCube(-100,-50,0, 50,150,60, [
+                {t:'高:15', p:'left:-75px; top:35%', c:'dim-h'}, 
+                {t:'長:5', p:'top:-45px; left:0px', c:'dim-l'}
+            ]));
+            // 中間底座 (已移除底部高:5)
+            container.appendChild(createCube(-50,50,0, 100,50,60, [
+                {t:'長:20 (總)', p:'bottom:-65px; left:25px', c:'dim-l'}, 
+                // 凹形闊：褪入深度 (translateZ=0)，貼住最後嗰層邊緣 (right 改為 0，令佢移去角落)
+                {t:'闊:6', p:'top:-30px; right:0px; transform:translateZ(0px);', c:'dim-w'}, 
+                {t:'中間高:10', p:'top:-55px; left:10px', c:'dim-gap'}
+            ]));
+            // 右立柱
+            container.appendChild(createCube(50,-50,0, 50,150,60, [
+                {t:'高:15', p:'right:-75px; top:35%', c:'dim-h'}, 
+                {t:'長:5', p:'top:-45px; right:0px', c:'dim-l'}
+            ]));
+        }
+    }
+
+    function loadShape(type) {
+        currentShape = type;
+        renderBaseShape(type);
+        mathInputs.innerHTML = '請點擊切割按鈕開始計算。';
+        document.getElementById('result-msg').innerText = '';
+    }
+
+    function applyCut(mode) {
+        if(!currentShape) return;
+        container.innerHTML = '';
+        const hide = true;
+
+        if(currentShape === 'L') {
+            if(mode === 'V') {
+                container.appendChild(createCube(-110,-50,0, 60,150,60, [{t:'(A) 長:6',p:'top:-45px',c:'dim-l'},{t:'高:15',p:'left:-75px',c:'dim-h'},{t:'闊:6',p:'right:-45px',c:'dim-w'}], hide));
+                container.appendChild(createCube(30,40,0, 100,60,60, [{t:'(B) 長:10',p:'bottom:-50px',c:'dim-l'},{t:'高:6',p:'right:-75px',c:'dim-h'},{t:'闊:6',p:'top:-50px',c:'dim-w'}], hide));
+                setupInputs(2);
+            } else {
+                container.appendChild(createCube(-50,-90,0, 60,90,60, [{t:'(A) 長:6',p:'top:-45px',c:'dim-l'},{t:'高:9',p:'left:-75px',c:'dim-h'},{t:'闊:6',p:'right:-45px',c:'dim-w'}], hide));
+                container.appendChild(createCube(-50,40,0, 160,60,60, [{t:'(B) 長:16',p:'bottom:-50px',c:'dim-l'},{t:'高:6',p:'right:-75px',c:'dim-h'},{t:'闊:6',p:'top:-50px',c:'dim-w'}], hide));
+                setupInputs(2);
+            }
+        } else { 
+            if(mode === 'V') {
+                container.appendChild(createCube(-150,-50,0, 50,150,60, [{t:'(A) 長:5',p:'top:-45px',c:'dim-l'},{t:'高:15',p:'left:-75px',c:'dim-h'},{t:'闊:6',p:'bottom:-50px',c:'dim-w'}], hide));
+                container.appendChild(createCube(-25,50,0, 100,50,60, [{t:'(B) 長:10',p:'bottom:-50px',c:'dim-l'},{t:'高:5',p:'left:-65px',c:'dim-h'},{t:'闊:6',p:'top:-50px',c:'dim-w'}], hide));
+                container.appendChild(createCube(120,-50,0, 50,150,60, [{t:'(C) 長:5',p:'top:-45px',c:'dim-l'},{t:'高:15',p:'right:-75px',c:'dim-h'},{t:'闊:6',p:'bottom:-50px',c:'dim-w'}], hide));
+                setupInputs(3);
+            } else {
+                // 水平切割：闊度標籤也需要保持褪入位置
+                container.appendChild(createCube(-100,-100,0, 50,100,60, [{t:'(A) 長:5',p:'top:-45px',c:'dim-l'},{t:'高:10',p:'left:-75px',c:'dim-h'},{t:'闊:6',p:'bottom:-45px',c:'dim-w'}], hide));
+                container.appendChild(createCube(50,-100,0, 50,100,60, [{t:'(B) 長:5',p:'top:-45px',c:'dim-l'},{t:'高:10',p:'right:-75px',c:'dim-h'},{t:'闊:6',p:'bottom:-45px',c:'dim-w'}], hide));
+                container.appendChild(createCube(-100,50,0, 200,50,60, [
+                    {t:'(C) 長:20',p:'bottom:-50px',c:'dim-l'},
+                    {t:'高:5',p:'right:-75px',c:'dim-h'},
+                    // 保持褪入位置
+                    {t:'闊:6',p:'top:-30px; right:0px; transform:translateZ(0px);',c:'dim-w'} 
+                ], hide));
+                setupInputs(3);
+            }
+        }
+    }
+
+    function setupInputs(n) {
+        mathInputs.innerHTML = '';
+        for(let i=1; i<=n; i++) {
+            let c = String.fromCharCode(64+i);
+            mathInputs.innerHTML += `<div class="calc-row"><b>部分 ${c}</b> 長 <input type="number" id="l${i}"> × 闊 <input type="number" id="w${i}"> × 高 <input type="number" id="h${i}"> = 體積 <input type="number" id="v${i}" style="width:75px"> cm³</div>`;
+        }
+    }
+
+    function checkAnswer() {
+        let ok = true, rows = mathInputs.querySelectorAll('.calc-row').length;
+        if(rows === 0) return;
+        for(let i=1; i<=rows; i++) {
+            let l = +document.getElementById(`l${i}`).value, w = +document.getElementById(`w${i}`).value, h = +document.getElementById(`h${i}`).value, v = +document.getElementById(`v${i}`).value;
+            if (l*w*h !== v || v === 0) ok = false;
+        }
+        let m = document.getElementById('result-msg');
+        if(ok) {
+            m.innerHTML = "🌟 答對了！"; m.style.color = "#27ae60";
+            document.querySelectorAll('.label').forEach(lb => { if(lb.dataset.fullValue) { lb.innerText = lb.dataset.fullValue; lb.classList.add('revealed'); } });
+        } else {
+            m.innerHTML = "❌ 數值有誤！"; m.style.color = "#e74c3c";
+        }
+    }
+
+    function reset() { if(currentShape) loadShape(currentShape); }
+</script>
+</body>
+</html>
