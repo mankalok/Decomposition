@@ -2,31 +2,26 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>3D 空間探究 V29 - 分割與填補對比</title>
+    <title>3D 空間探究 V30 - iPad 優化對比版</title>
     <style>
-        body { font-family: '微軟正黑體', sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        body { font-family: '微軟正黑體', sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; touch-action: none; }
         #scene { 
             width: 850px; height: 500px; perspective: 1000px; 
             background: #ffffff; border-radius: 20px; border: 3px solid #2c3e50;
             position: relative; cursor: move; touch-action: none; overflow: hidden;
         }
         #object-container { width: 0; height: 0; position: absolute; left: 50%; top: 55%; transform-style: preserve-3d; transform: rotateX(-20deg) rotateY(35deg) scale(1.3); }
-        
         .cube { position: absolute; transform-style: preserve-3d; transition: all 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .face { position: absolute; border: 1px solid rgba(255,255,255,0.4); box-sizing: border-box; }
         .base-face { background: #3498db; opacity: 0.9; }
         .fill-face { background: #e74c3c; opacity: 0.6; border: 2px dashed #ffffff; }
-        
         .dim-label {
             position: absolute; background: rgba(255,255,255,0.95); color: #333;
             padding: 2px 6px; border: 1px solid #2c3e50; border-radius: 4px;
             font-size: 14px; font-weight: bold; z-index: 100; white-space: nowrap;
         }
-
         .controls { margin-top: 20px; display: flex; gap: 15px; }
         button { padding: 12px 25px; cursor: pointer; border-radius: 10px; border: none; background: #2c3e50; color: white; font-weight: bold; font-size: 16px; }
-        button.active { background: #e67e22; transform: scale(1.05); box-shadow: 0 0 10px rgba(230,126,34,0.5); }
-
         #input-area { margin-top: 20px; width: 850px; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-left: 8px solid #3498db; }
         .calc-row { margin-bottom: 15px; display: flex; align-items: center; gap: 12px; font-size: 18px; }
         input { width: 70px; padding: 8px; text-align: center; border: 2px solid #ddd; border-radius: 6px; font-size: 18px; }
@@ -34,16 +29,16 @@
 </head>
 <body>
 
-    <h2 style="color:#2c3e50;">📐 立體探究：為什麼「填補法」更方便？</h2>
+    <h2 style="color:#2c3e50;">📐 立體探究 V30：分割 vs 填補 (iPad 觸控版)</h2>
 
     <div id="scene">
         <div id="object-container"></div>
     </div>
 
     <div class="controls">
-        <button onclick="loadHollow()" id="btn-load">🔄 重置圖形</button>
-        <button onclick="showDecomposition()" id="btn-dec">✂️ 嘗試「分割法」</button>
-        <button onclick="toggleFill()" id="btn-fill" style="background:#e67e22;">✨ 執行「填補法」動畫</button>
+        <button onclick="loadHollow()" style="background:#7f8c8d;">🔄 重置圖形</button>
+        <button onclick="showDecomposition()" style="background:#3498db;">✂️ 嘗試「分割法」</button>
+        <button onclick="toggleFill()" style="background:#e67e22;">✨ 執行「填補法」動畫</button>
     </div>
 
     <div id="input-area">
@@ -59,42 +54,46 @@
     const container = document.getElementById('object-container');
     const scene = document.getElementById('scene');
 
-    // 3D 旋轉控制
+    // --- iPad & 滑鼠通用 3D 旋轉控制 ---
     let lastX, lastY, isDragging = false;
-    scene.onmousedown = (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; };
-    window.onmousemove = (e) => {
+    const startDrag = (x, y) => { isDragging = true; lastX = x; lastY = y; };
+    const moveDrag = (x, y) => {
         if (!isDragging) return;
-        rotateY += (e.clientX - lastX) * 0.5; rotateX -= (e.clientY - lastY) * 0.5;
+        rotateY += (x - lastX) * 0.5; rotateX -= (y - lastY) * 0.5;
         container.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.3)`;
-        lastX = e.clientX; lastY = e.clientY;
+        lastX = x; lastY = y;
     };
-    window.onmouseup = () => isDragging = false;
+    const endDrag = () => { isDragging = false; };
+
+    scene.onmousedown = (e) => startDrag(e.clientX, e.clientY);
+    window.onmousemove = (e) => moveDrag(e.clientX, e.clientY);
+    window.onmouseup = endDrag;
+
+    scene.ontouchstart = (e) => { startDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); };
+    scene.ontouchmove = (e) => { moveDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); };
+    scene.ontouchend = endDrag;
 
     function createCube(x, y, z, w, h, d, type='base', labels=[], id='') {
         const cube = document.createElement('div');
-        cube.className = 'cube';
-        if(id) cube.id = id;
+        cube.className = 'cube'; if(id) cube.id = id;
         cube.style.cssText = `width:${w}px; height:${h}px; transform: translate3d(${x}px, ${y}px, ${z}px);`;
-        const faces = ['front', 'top', 'right', 'left', 'bottom', 'back'];
         const faceStyles = [
-            `width:${w}px; height:${h}px; transform: translateZ(${d/2}px)`,
-            `width:${w}px; height:${d}px; transform: rotateX(90deg) translateZ(${d/2}px)`,
-            `width:${d}px; height:${h}px; transform: rotateY(90deg) translateZ(${w - d/2}px)`,
-            `width:${d}px; height:${h}px; transform: rotateY(-90deg) translateZ(${d/2}px)`,
-            `width:${w}px; height:${d}px; transform: rotateX(-90deg) translateZ(${h - d/2}px)`,
-            `width:${w}px; height:${h}px; transform: rotateY(180deg) translateZ(${d/2}px)`
+            `width:${w}px; height:${h}px; transform: translateZ(${d/2}px)`, // front
+            `width:${w}px; height:${d}px; transform: rotateX(90deg) translateZ(${d/2}px)`, // top
+            `width:${d}px; height:${h}px; transform: rotateY(90deg) translateZ(${w - d/2}px)`, // right
+            `width:${d}px; height:${h}px; transform: rotateY(-90deg) translateZ(${d/2}px)`, // left
+            `width:${w}px; height:${d}px; transform: rotateX(-90deg) translateZ(${h - d/2}px)`, // bottom
+            `width:${w}px; height:${h}px; transform: rotateY(180deg) translateZ(${d/2}px)` // back
         ];
-        faces.forEach((f, i) => {
+        faceStyles.forEach(style => {
             let div = document.createElement('div');
             div.className = `face ${type}-face`;
-            div.style.cssText = faceStyles[i];
+            div.style.cssText = style;
             cube.appendChild(div);
         });
         labels.forEach(l => {
             let div = document.createElement('div');
-            div.className = 'dim-label';
-            div.innerText = l.text;
-            div.style.cssText = l.pos;
+            div.className = 'dim-label'; div.innerText = l.text; div.style.cssText = l.pos;
             cube.appendChild(div);
         });
         return cube;
@@ -102,83 +101,53 @@
 
     function loadHollow() {
         container.innerHTML = ''; isFilling = false;
-        // 左、右、上、下 四部分
         container.appendChild(createCube(-80, -80, 0, 40, 160, 60, 'base', [{text:'高: 8', pos:'left:-65px; top:40%'}], 'p1'));
-        container.appendChild(createCube(40, -80, 0, 40, 160, 60, 'base', [{text:'闊: 3', pos:'right:-70px; top:-40px'}], 'p2'));
+        container.appendChild(createCube(40, -80, 0, 40, 160, 60, 'base', [{text:'闊: 3', pos:'right:-75px; top:-30px'}], 'p2'));
         container.appendChild(createCube(-40, -80, 0, 80, 40, 60, 'base', [{text:'長: 10', pos:'top:-45px; left:20px'}], 'p3'));
         container.appendChild(createCube(-40, 40, 0, 80, 40, 60, 'base', [], 'p4'));
         
-        // 中間洞的數據（一早就在這裡）
-        const holeInfo = document.createElement('div');
-        holeInfo.id = 'hole-labels';
-        holeInfo.innerHTML = `
-            <div class="dim-label" style="top:-30px; left:-30px; color:#e74c3c;">洞長: 4</div>
-            <div class="dim-label" style="top:10px; left:-30px; color:#e74c3c;">洞高: 4</div>
-        `;
-        holeInfo.style.cssText = "position:absolute; transform: translate3d(0,0,31px); transform-style:preserve-3d;";
-        container.appendChild(holeInfo);
+        const hole = document.createElement('div');
+        hole.id = 'hole-labels';
+        hole.innerHTML = `<div class="dim-label" style="top:-30px; left:-30px; color:#e74c3c; border-color:#e74c3c;">洞長: 4</div>
+                          <div class="dim-label" style="top:10px; left:-30px; color:#e74c3c; border-color:#e74c3c;">洞高: 4</div>`;
+        hole.style.cssText = "position:absolute; transform: translate3d(0,0,31px); transform-style:preserve-3d;";
+        container.appendChild(hole);
 
-        document.getElementById('math-inputs').innerHTML = `<b>觀察圖形：</b>這是一個中空的方框。請嘗試用不同的方法計算它的體積。`;
+        document.getElementById('math-inputs').innerHTML = `<b>觀察：</b>這是一個中空方框。請比較「分割」與「填補」哪種方法更好算？`;
         document.getElementById('result-msg').innerText = '';
     }
 
     function showDecomposition() {
-        // 分割法動畫：把四塊炸開
+        loadHollow();
         document.getElementById('p1').style.transform = 'translate3d(-110px, -80px, 20px)';
         document.getElementById('p2').style.transform = 'translate3d(70px, -80px, 20px)';
         document.getElementById('p3').style.transform = 'translate3d(-40px, -110px, -20px)';
         document.getElementById('p4').style.transform = 'translate3d(-40px, 70px, -20px)';
-        
-        document.getElementById('math-inputs').innerHTML = `
-            <p style="color:#2c3e50">⚠️ <b>分割法分析：</b></p>
-            <ul>
-                <li>你需要計算 4 個長方體：左 + 右 + 上 + 下。</li>
-                <li>這需要進行 4 次乘法運算，還要小心不要重複計算角落！</li>
-            </ul>
-        `;
+        document.getElementById('math-inputs').innerHTML = `<p style="color:#2c3e50">⚠️ <b>分割法：</b>需計算 4 個長方體並相加。計算量大且容易數錯重疊位。</p>`;
     }
 
     function toggleFill() {
         isFilling = !isFilling;
-        const fillID = 'animated-fill-part';
-        let existing = document.getElementById(fillID);
-
         if(isFilling) {
-            // 恢復位置
             loadHollow();
-            let fill = createCube(-40, -40, 0, 80, 80, 60, 'fill');
-            fill.id = fillID;
+            let fill = createCube(-40, -40, 0, 80, 80, 60, 'fill', [], 'animated-fill-part');
             fill.style.transform = `translate3d(-40px, -500px, 0px)`;
             container.appendChild(fill);
             setTimeout(() => { fill.style.transform = `translate3d(-40px, -40px, 0px)`; }, 50);
-
-            setupFillInputs();
-        } else {
-            if(existing) {
-                existing.style.transform = `translate3d(-40px, 500px, 0px)`;
-                setTimeout(() => existing.remove(), 800);
-            }
-        }
-    }
-
-    function setupFillInputs() {
-        document.getElementById('math-inputs').innerHTML = `
-            <p style="color:#e67e22">💡 <b>填補法分析：</b>只需「大長方體」減去「中間洞」即可。</p>
-            <div class="calc-row">大長方體：<input type="number" id="l1"> × <input type="number" id="w1"> × <input type="number" id="h1"> = <input type="number" id="v1"></div>
-            <div class="calc-row">中間洞：<input type="number" id="l2"> × <input type="number" id="w2"> × <input type="number" id="h2"> = <input type="number" id="v2"></div>
-            <div class="calc-row" style="background:#fef9e7; padding:10px;">總體積：<input type="number" id="v_big"> - <input type="number" id="v_small"> = <input type="number" id="v_ans"> cm³</div>
-        `;
+            document.getElementById('math-inputs').innerHTML = `
+                <p style="color:#e67e22">💡 <b>填補法：</b>大長方體 － 中間洞 = 答案。</p>
+                <div class="calc-row">大長方體：<input type="number" id="l1" placeholder="長"> × <input type="number" id="w1" placeholder="闊"> × <input type="number" id="h1" placeholder="高"> = <input type="number" id="v1"></div>
+                <div class="calc-row">中間洞：<input type="number" id="l2" placeholder="長"> × <input type="number" id="w2" placeholder="闊"> × <input type="number" id="h2" placeholder="高"> = <input type="number" id="v2"></div>
+                <div class="calc-row" style="background:#fef9e7; padding:10px; border-radius:8px;">總體積：<input type="number" id="v_big"> － <input type="number" id="v_small"> = <input type="number" id="v_ans"> cm³</div>
+            `;
+        } else { loadHollow(); }
     }
 
     function checkAnswer() {
         const v_ans = +document.getElementById('v_ans')?.value;
         const m = document.getElementById('result-msg');
-        // 正確答案：(10*3*8) - (4*3*4) = 240 - 48 = 192
-        if(v_ans === 192) {
-            m.innerHTML = "🌟 太聰明了！填補法果然又快又準！"; m.style.color = "green";
-        } else {
-            m.innerHTML = "❌ 數值不太對，再檢查一下「大長方體」和「洞」的數據吧！"; m.style.color = "red";
-        }
+        if(v_ans === 192) { m.innerHTML = "🎉 正確！(240 - 48 = 192)"; m.style.color = "green"; }
+        else { m.innerHTML = "❌ 再算算看，提示：大體是 10×3×8，洞是 4×3×4。"; m.style.color = "red"; }
     }
 
     window.onload = loadHollow;
