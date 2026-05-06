@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 裝箱探究工具 v6.4 - 固定位置獨立變法版</title>
+    <title>3D 裝箱探究工具 v6.2 - 尺寸同步完美版</title>
     <style>
         :root { --u: 30px; }
         body { font-family: 'PingFang HK', sans-serif; background: #f0f2f5; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; touch-action: none; }
@@ -91,7 +91,7 @@
         <button class="btn-v" onclick="toggleView()" id="viewBtn">切換至 2D 俯視</button>
         <button class="btn-r" onclick="resetBlocks()">清空積木</button>
     </div>
-    <div class="status-bar" id="status">提示：可在畫面上滑動來旋轉觀察。</div>
+    <div class="status-bar" id="status">提示：可在畫面上滑動旋轉。</div>
 </div>
 
 <script>
@@ -116,7 +116,7 @@
     stage.addEventListener('mousedown', startDrag); window.addEventListener('mousemove', moveDrag); window.addEventListener('mouseup', endDrag);
     stage.addEventListener('touchstart', startDrag); window.addEventListener('touchmove', moveDrag); window.addEventListener('touchend', endDrag);
 
-    // --- 初始化 (核心邏輯：位置絕對不變，長闊獨立配合) ---
+    // --- 初始化 (核心修正：藍色面尺寸配對) ---
     function init() {
         const L=parseInt(document.getElementById('inL').value), W=parseInt(document.getElementById('inW').value),
               H=parseInt(document.getElementById('inH').value), S=parseInt(document.getElementById('inS').value);
@@ -127,13 +127,15 @@
         const dL = L * ratio, dW = W * ratio, dH = H * ratio;
         shell.innerHTML = '';
 
-        // 1. 底面：尺寸配合 [長(dL) x 闊(dW)]，位置不動
+        // 1. 底面：配合 長 (dL) 同 闊 (dW)
         createFace(dL, dW, `transform: translate3d(-15px, -15px, -15px)`, 'box-bottom');
         
-        // 2. 左側面：尺寸配合 [闊(dW) x 高(dH)]，位置不動，只係旋轉角度
+        // 2. 左側面：配合 闊 (dW) 同 高 (dH)
+        // 旋轉並重新定位，確保高度係垂直向上
         createFace(dW, dH, `transform: translate3d(-15px, -15px, -15px) rotateY(-90deg)`, '');
         
-        // 3. 背面：尺寸配合 [長(dL) x 高(dH)]，位置不動，只係旋轉角度
+        // 3. 背面：配合 長 (dL) 同 高 (dH)
+        // 旋轉並重新定位
         createFace(dL, dH, `transform: translate3d(-15px, -15px, -15px) rotateX(90deg)`, '');
 
         resetBlocks();
@@ -189,9 +191,8 @@
 
     function toggleView() {
         is3D = !is3D;
-        const btn = document.getElementById('viewBtn');
-        if(is3D) { rotX = -25; rotY = 35; shell.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`; btn.innerText = '切換至 2D 俯視'; document.getElementById('btnH').disabled = false; }
-        else { shell.style.transform = 'rotateX(0deg) rotateY(0deg)'; btn.innerText = '切換至 3D 立體'; document.getElementById('btnH').disabled = true; }
+        if(is3D) { rotX = -25; rotY = 35; shell.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`; document.getElementById('viewBtn').innerText = '切換至 2D 俯視'; document.getElementById('btnH').disabled = false; }
+        else { shell.style.transform = 'rotateX(0deg) rotateY(0deg)'; document.getElementById('viewBtn').innerText = '切換至 3D 立體'; document.getElementById('btnH').disabled = true; }
     }
 
     function updateStatus() { document.getElementById('status').innerHTML = `<b>數量：</b>${curL}×${curW}×${curH} = <span style="color:red; font-size:22px;">${curL*curW*curH}</span> 塊`; }
