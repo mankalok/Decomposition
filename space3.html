@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D 裝箱探究工具 v6.5 - 維度座標精確版</title>
+    <style>
+        :root { --u: 30px; }
+        body { font-family: 'PingFang HK', sans-serif; background: #f0f2f5; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; touch-action: none; }
+        .app-container { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 95%; max-width: 650px; touch-action: auto; }
+        
+        .info-header { display: flex; justify-content: space-around; margin-bottom: 15px; text-align: center; }
+        .info-box { flex: 1; padding: 12px; border-radius: 10px; margin: 0 8px; border: 1px solid; }
+        .info-container { background: #e3f2fd; border-color: #2196f3; color: #1565c0; }
+        .info-cube { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+        .label { font-size: 13px; display: block; margin-bottom: 5px; opacity: 0.8; }
+        .value { font-weight: bold; font-size: 20px; letter-spacing: 1px; }
+
+        .setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; background: #f8f9fa; padding: 15px; border-radius: 10px; border: 1px solid #eee; }
+        .setup-section { display: flex; flex-direction: column; gap: 8px; }
+        .input-row { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+        input { width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-weight: bold; }
+
+        #stage { 
+            width: 100%; height: 400px; background: radial-gradient(circle, #ffffff 0%, #f0f0f0 100%); 
+            border: 1px solid #ddd; border-radius: 12px;
+            perspective: 1200px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
+            cursor: grab;
+        }
+        #stage:active { cursor: grabbing; }
+        
+        #box-shell { 
+            position: relative; transform-style: preserve-3d; 
+            transform: rotateX(-25deg) rotateY(35deg);
+            transition: transform 0.1s linear;
+            pointer-events: none;
+        }
+        
+        .box-face {
+            position: absolute; border: 2px solid #2196f3;
+            background: rgba(33, 150, 243, 0.1); box-sizing: border-box; transform-origin: 0 0 0;
+            left: 5px; top: 5px;
+        }
+        .box-bottom { background: rgba(33, 150, 243, 0.2); border-width: 3px; }
+
+        .cube { position: absolute; transform-style: preserve-3d; width: var(--u); height: var(--u); left: -5px; top: -5px; }
+        .face { position: absolute; width: 30px; height: 30px; border: 1px solid #000; box-sizing: border-box; }
+        .f-front { background: #4caf50; transform: translateZ(15px); }
+        .f-back  { background: #388e3c; transform: rotateY(180deg) translateZ(15px); }
+        .f-right { background: #2e7d32; transform: rotateY(90deg) translateZ(15px); }
+        .f-left  { background: #2e7d32; transform: rotateY(-90deg) translateZ(15px); }
+        .f-top   { background: #81c784; transform: rotateX(90deg) translateZ(15px); }
+        .f-bottom{ background: #1b5e20; transform: rotateX(-90deg) translateZ(15px); }
+
+        .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+        button { padding: 14px 2px; border: none; border-radius: 10px; color: white; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:active { transform: scale(0.95); }
+        .btn-l { background: #ef6c00; } .btn-w { background: #8e24aa; } .btn-h { background: #1565c0; }
+        .btn-v { background: #455a64; grid-column: span 3; }
+        .btn-r { background: #c62828; grid-column: span 3; }
+
+        .status-bar { margin-top: 15px; padding: 15px; background: #fffde7; border-radius: 10px; text-align: center; width: 100%; box-sizing: border-box; border: 1px solid #fff59d; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="info-header">
+        <div class="info-box info-container"><span class="label">📦 容器尺寸</span><span class="value" id="disp-box">20×12×12</span></div>
+        <div class="info-box info-cube"><span class="label">🟩 積木邊長</span><span class="value" id="disp-cube">4 cm</span></div>
+    </div>
+
+    <div class="setup-grid">
+        <div class="setup-section">
+            <div class="input-row">長 (L): <input type="number" id="inL" value="20"></div>
+            <div class="input-row">闊 (W): <input type="number" id="inW" value="12"></div>
+        </div>
+        <div class="setup-section">
+            <div class="input-row">高 (H): <input type="number" id="inH" value="12"></div>
+            <div class="input-row">邊長: <input type="number" id="inS" value="4"></div>
+        </div>
+        <button onclick="init()" style="grid-column: span 2; background:#4caf50; color:white; border:none; padding:10px; border-radius:8px; cursor:pointer; font-weight:bold;">套用新設定</button>
+    </div>
+
+    <div id="stage"><div id="box-shell"></div></div>
+
+    <div class="controls">
+        <button class="btn-l" onclick="addL()">＋增加長度</button>
+        <button class="btn-w" onclick="addW()">＋增加闊度</button>
+        <button class="btn-h" onclick="addH()" id="btnH">＋增加高度</button>
+        <button class="btn-v" onclick="toggleView()" id="viewBtn">切換至 2D 俯視</button>
+        <button class="btn-r" onclick="resetBlocks()">清空積木</button>
+    </div>
+    <div class="status-bar" id="status">提示：可在畫面上滑動來旋轉觀察。</div>
+</div>
+
+<script>
+    let curL=0, curW=0, curH=0, is3D=true, u=30;
+    let rotX = -25, rotY = 35;
+    const shell = document.getElementById('box-shell');
+    const stage = document.getElementById('stage');
+
+    // --- 旋轉控制 ---
+    let isDragging = false, lastX, lastY;
+    function startDrag(e) { if (!is3D) return; isDragging = true; lastX = e.touches ? e.touches[0].clientX : e.clientX; lastY = e.touches ? e.touches[0].clientY : e.clientY; }
+    function moveDrag(e) {
+        if (!isDragging || !is3D) return;
+        const cx = e.touches ? e.touches[0].clientX : e.clientX;
+        const cy = e.touches ? e.touches[0].clientY : e.clientY;
+        rotY += (cx - lastX) * 0.5; rotX -= (cy - lastY) * 0.5;
+        rotX = Math.max(-90, Math.min(90, rotX));
+        shell.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+        lastX = cx; lastY = cy;
+    }
+    function endDrag() { isDragging = false; }
+    stage.addEventListener('mousedown', startDrag); window.addEventListener('mousemove', moveDrag); window.addEventListener('mouseup', endDrag);
+    stage.addEventListener('touchstart', startDrag); window.addEventListener('touchmove', moveDrag); window.addEventListener('touchend', endDrag);
+
+  // --- 修正版：先定位、後旋轉，確保板塊永遠緊貼積木邊界 ---
+    function init() {
+        const L = parseInt(document.getElementById('inL').value),
+              W = parseInt(document.getElementById('inW').value),
+              H = parseInt(document.getElementById('inH').value),
+              S = parseInt(document.getElementById('inS').value);
+        document.getElementById('disp-box').innerText = `${L} × ${W} × ${H}`;
+        document.getElementById('disp-cube').innerText = `${S} cm`;
+        
+        const ratio = u / S;
+        const dL = L * ratio, dW = W * ratio, dH = H * ratio;
+        shell.innerHTML = '';
+
+        // 1. 底面 (維持地基)
+        createFace(dL, dW, `transform: translate3d(-15px, -15px, -15px)`, 'box-bottom');
+        
+        // 2. 左側面：先向左移 15px 基準，再將板垂直旋轉，並向上提返 dH 高度
+        createFace(dW, dH, `transform: translate3d(-15px, -15px, -15px) rotateY(-90deg) translate3d(0, -${dH}px, 0) rotateX(180deg)`, '');
+        
+        // 3. 背面 (最入嗰塊)：先移到積木嘅最後方 (-dW)，再旋轉向上生長
+        createFace(dL, dH, `transform: translate3d(-15px, -15px, -15px) translate3d(0, 0, -${dW}px) rotateX(90deg) translate3d(0, -${dH}px, 0)`, '');
+
+        resetBlocks();
+    }
+
+    function createFace(w, h, style, cls) {
+        const f = document.createElement('div');
+        f.className = 'box-face ' + cls;
+        f.style.width = w + 'px'; f.style.height = h + 'px';
+        f.style.cssText += style;
+        shell.appendChild(f);
+    }
+
+    function makeCube(l, w, h) {
+        const c = document.createElement('div');
+        c.className = 'cube';
+        c.style.transform = `translate3d(${l*u}px, ${w*u}px, ${h*u}px)`;
+        ['front','back','top','bottom','left','right'].forEach(f => {
+            const div = document.createElement('div');
+            div.className = `face f-${f}`;
+            if(f==='front'||f==='back') div.style.transform = `rotateY(${f==='back'?180:0}deg) translateZ(15px)`;
+            if(f==='left'||f==='right') div.style.transform = `rotateY(${f==='left'?-90:90}deg) translateZ(15px)`;
+            if(f==='top'||f==='bottom') div.style.transform = `rotateX(${f==='bottom'?-90:90}deg) translateZ(15px)`;
+            c.appendChild(div);
+        });
+        return c;
+    }
+
+    function addL() {
+        const S = parseInt(document.getElementById('inS').value);
+        const max = Math.floor(document.getElementById('inL').value / S);
+        if(curL < max) {
+            for(let j=0; j<Math.max(1,curW); j++) for(let k=0; k<Math.max(1,curH); k++) shell.appendChild(makeCube(curL, j, k));
+            curL++; if(curW==0)curW=1; if(curH==0)curH=1; updateStatus();
+        }
+    }
+    function addW() {
+        const S = parseInt(document.getElementById('inS').value);
+        const max = Math.floor(document.getElementById('inW').value / S);
+        if(curW < max && curL > 0) {
+            for(let i=0; i<curL; i++) for(let k=0; k<curH; k++) shell.appendChild(makeCube(i, curW, k));
+            curW++; updateStatus();
+        }
+    }
+    function addH() {
+        const S = parseInt(document.getElementById('inS').value);
+        const max = Math.floor(document.getElementById('inH').value / S);
+        if(curH < max && curL > 0 && curW > 0) {
+            for(let i=0; i<curL; i++) for(let j=0; j<curW; j++) shell.appendChild(makeCube(i, j, curH));
+            curH++; updateStatus();
+        }
+    }
+
+    function toggleView() {
+        is3D = !is3D;
+        const btn = document.getElementById('viewBtn');
+        if(is3D) { rotX = -25; rotY = 35; shell.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`; btn.innerText = '切換至 2D 俯視'; document.getElementById('btnH').disabled = false; }
+        else { shell.style.transform = 'rotateX(0deg) rotateY(0deg)'; btn.innerText = '切換至 3D 立體'; document.getElementById('btnH').disabled = true; }
+    }
+
+    function updateStatus() { document.getElementById('status').innerHTML = `<b>數量：</b>${curL}×${curW}×${curH} = <span style="color:red; font-size:22px;">${curL*curW*curH}</span> 塊`; }
+    function resetBlocks() { document.querySelectorAll('.cube').forEach(c => c.remove()); curL=0; curW=0; curH=0; updateStatus(); }
+    init();
+</script>
+</body>
+</html>
