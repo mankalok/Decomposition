@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D 裝箱探究工具 v6.5 - 維度座標精確版</title>
+    <title>3D 裝箱探究工具 v6.4 - 固定位置獨立變法版</title>
     <style>
         :root { --u: 30px; }
         body { font-family: 'PingFang HK', sans-serif; background: #f0f2f5; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; touch-action: none; }
@@ -116,12 +116,10 @@
     stage.addEventListener('mousedown', startDrag); window.addEventListener('mousemove', moveDrag); window.addEventListener('mouseup', endDrag);
     stage.addEventListener('touchstart', startDrag); window.addEventListener('touchmove', moveDrag); window.addEventListener('touchend', endDrag);
 
-  // --- 修正版：先定位、後旋轉，確保板塊永遠緊貼積木邊界 ---
+    // --- 初始化 (核心邏輯：位置絕對不變，長闊獨立配合) ---
     function init() {
-        const L = parseInt(document.getElementById('inL').value),
-              W = parseInt(document.getElementById('inW').value),
-              H = parseInt(document.getElementById('inH').value),
-              S = parseInt(document.getElementById('inS').value);
+        const L=parseInt(document.getElementById('inL').value), W=parseInt(document.getElementById('inW').value),
+              H=parseInt(document.getElementById('inH').value), S=parseInt(document.getElementById('inS').value);
         document.getElementById('disp-box').innerText = `${L} × ${W} × ${H}`;
         document.getElementById('disp-cube').innerText = `${S} cm`;
         
@@ -129,14 +127,14 @@
         const dL = L * ratio, dW = W * ratio, dH = H * ratio;
         shell.innerHTML = '';
 
-        // 1. 底面 (維持地基)
+        // 1. 底面：尺寸配合 [長(dL) x 闊(dW)]，位置不動
         createFace(dL, dW, `transform: translate3d(-15px, -15px, -15px)`, 'box-bottom');
         
-        // 2. 左側面：先向左移 15px 基準，再將板垂直旋轉，並向上提返 dH 高度
-        createFace(dW, dH, `transform: translate3d(-15px, -15px, -15px) rotateY(-90deg) translate3d(0, -${dH}px, 0) rotateX(180deg)`, '');
+        // 2. 左側面：尺寸配合 [闊(dW) x 高(dH)]，位置不動，只係旋轉角度
+        createFace(dW, dH, `transform: translate3d(-15px, -15px, -15px) rotateY(-90deg)`, '');
         
-        // 3. 背面 (最入嗰塊)：先移到積木嘅最後方 (-dW)，再旋轉向上生長
-        createFace(dL, dH, `transform: translate3d(-15px, -15px, -15px) translate3d(0, 0, -${dW}px) rotateX(90deg) translate3d(0, -${dH}px, 0)`, '');
+        // 3. 背面：尺寸配合 [長(dL) x 高(dH)]，位置不動，只係旋轉角度
+        createFace(dL, dH, `transform: translate3d(-15px, -15px, -15px) rotateX(90deg)`, '');
 
         resetBlocks();
     }
